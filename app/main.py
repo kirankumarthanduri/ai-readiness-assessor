@@ -1,6 +1,7 @@
 import streamlit as st
 import sys
 import os
+import plotly.graph_objects as go
 
 sys.path.insert(0, os.path.dirname(__file__))
 
@@ -211,7 +212,33 @@ def show_report():
 
     # Dimension scores
     st.markdown("### 📊 Dimension Breakdown")
-    cols = st.columns(len(dimensions))
+
+    dim_names = list(dimensions.keys())
+    dim_scores = list(dimensions.values())
+
+    short_labels = ["Data", "Technology", "Talent", "Leadership", "Governance"]
+
+    # Radar chart
+    fig = go.Figure(go.Scatterpolar(
+        r=dim_scores + [dim_scores[0]],
+        theta=short_labels + [short_labels[0]],
+        fill="toself",
+        fillcolor="rgba(67, 97, 238, 0.2)",
+        line=dict(color="#4361ee", width=2),
+        marker=dict(size=6, color="#4361ee"),
+    ))
+    fig.update_layout(
+        polar=dict(
+            radialaxis=dict(visible=True, range=[0, 100], tickfont=dict(size=10)),
+            angularaxis=dict(tickfont=dict(size=12))
+        ),
+        showlegend=False,
+        margin=dict(t=40, b=40, l=60, r=60),
+        height=400,
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # Score metrics below chart
     icons = {
         "Data Readiness": "📊",
         "Technology Infrastructure": "🏗️",
@@ -219,7 +246,7 @@ def show_report():
         "Leadership & Strategy": "🎯",
         "Governance & Ethics": "⚖️"
     }
-
+    cols = st.columns(len(dimensions))
     for i, (dim, score) in enumerate(dimensions.items()):
         with cols[i]:
             st.metric(
