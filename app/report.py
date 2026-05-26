@@ -9,7 +9,7 @@ load_dotenv()
 
 def calculate_scores(answers: dict) -> dict:
     """Calculate scores per dimension and overall."""
-    
+
     dimension_scores = {
         "Data Readiness": [],
         "Technology Infrastructure": [],
@@ -17,28 +17,25 @@ def calculate_scores(answers: dict) -> dict:
         "Leadership & Strategy": [],
         "Governance & Ethics": []
     }
-    
+
     from questions import questions
-    
+
     for q in questions:
         q_id = str(q["id"])
         if q_id in answers:
-            # Score is option index + 1 (1 to 4)
             score = answers[q_id] + 1
             dimension_scores[q["dimension"]].append(score)
-    
-    # Calculate average per dimension (convert to percentage)
+
     dimension_percentages = {}
     for dimension, scores in dimension_scores.items():
         if scores:
             avg = sum(scores) / len(scores)
             percentage = round((avg / 4) * 100)
             dimension_percentages[dimension] = percentage
-    
-    # Overall score
+
     all_scores = [s for scores in dimension_scores.values() for s in scores]
     overall = round((sum(all_scores) / (len(all_scores) * 4)) * 100) if all_scores else 0
-    
+
     return {
         "overall": overall,
         "dimensions": dimension_percentages
@@ -57,45 +54,31 @@ def get_maturity_level(score: int) -> str:
         return "🟢 Leader"
 
 
-def generate_report(answers: dict, org_name: str) -> str:
-    """Send answers to Claude and get full AI Readiness Report."""
-    
-    scores = calculate_scores(answers)
-    overall = scores["overall"]
-    dimensions = scores["dimensions"]
-    maturity = get_maturity_level(overall)
-    
-    # Build dimension summary for prompt
-    dimension_summary = "\n".join([
-        f"- {dim}: {score}/100"
-        for dim, score in dimensions.items()
-    ])
-    
-    # Build answers summary for prompt
+def _build_questions_text() -> str:
     from questions import questions
-    answers_summary = ""
+    lines = []
     for q in questions:
-        q_id = str(q["id"])
-        if q_id in answers:
-            selected_option = q["options"][answers[q_id]]
-            answers_summary += f"\n[{q['dimension']}] {q['question']}\nAnswer: {selected_option}\n"
-    
-    prompt = f"""
-You are an expert Enterprise AI Transformation Consultant.
+        lines.append(f"[{q['dimension']}] Q{q['id']}: {q['question']}")
+        for i, opt in enumerate(q["options"]):
+            lines.append(f"  {i+1}. {opt}")
+    return "\n".join(lines)
 
-You have just completed an AI Readiness Assessment for the organization: {org_name}
 
-ASSESSMENT SCORES:
-Overall AI Readiness Score: {overall}/100
-Maturity Level: {maturity}
+# Static system prompt — cached on first call, reused on subsequent calls
+_SYSTEM_PROMPT = f"""You are an expert Enterprise AI Transformation Consultant.
 
-Dimension Scores:
-{dimension_summary}
+You administer a 20-question AI Readiness Assessment across five dimensions:
+- Data Readiness
+- Technology Infrastructure
+- Talent & Skills
+- Leadership & Strategy
+- Governance & Ethics
 
-Detailed Answers:
-{answers_summary}
+Each question has four options scored 1 (lowest) to 4 (highest). Here is the full question bank:
 
-Based on this assessment, generate a professional Enterprise AI Readiness Report with the following sections:
+{_build_questions_text()}
+
+When given an organization's assessment results, generate a professional Enterprise AI Readiness Report with exactly these sections:
 
 1. EXECUTIVE SUMMARY
    - 3-4 sentences summarizing the organization's AI readiness position
@@ -119,23 +102,64 @@ Based on this assessment, generate a professional Enterprise AI Readiness Report
 6. CLOSING RECOMMENDATION
    - 2-3 sentences with strategic advice for leadership
 
-Keep the tone professional, executive-level, and actionable.
-Use clear headings for each section.
+Keep the tone professional, executive-level, and actionable. Use clear headings for each section.
 """
+
+
+def generate_report(answers: dict, org_name: str) -> tuple:
+    """Send answers to Claude and get full AI Readiness Report."""
+
+    scores = calculate_scores(answers)
+    overall = scores["overall"]
+    dimensions = scores["dimensions"]
+    maturity = get_maturity_level(overall)
+
+    dimension_summary = "\n".join([
+        f"- {dim}: {score}/100"
+        for dim, score in dimensions.items()
+    ])
+
+    from questions import questions
+    answers_summary = ""
+    for q in questions:
+        q_id = str(q["id"])
+        if q_id in answers:
+            selected_option = q["options"][answers[q_id]]
+            answers_summary += f"\n[{q['dimension']}] Q{q['id']}: {selected_option}"
+
+    user_message = f"""Organization: {org_name}
+
+Overall AI Readiness Score: {overall}/100
+Maturity Level: {maturity}
+
+Dimension Scores:
+{dimension_summary}
+
+Selected Answers:
+{answers_summary}
+
+Please generate the Enterprise AI Readiness Report for this organization."""
 
     client = anthropic.Anthropic(
         api_key=os.getenv("ANTHROPIC_API_KEY")
     )
-    
+
     message = client.messages.create(
-        model="claude-sonnet-4-5",
+        model="claude-sonnet-4-6",
         max_tokens=2000,
+        system=[
+            {
+                "type": "text",
+                "text": _SYSTEM_PROMPT,
+                "cache_control": {"type": "ephemeral"}
+            }
+        ],
         messages=[
             {
                 "role": "user",
-                "content": prompt
+                "content": user_message
             }
         ]
     )
-    
+
     return message.content[0].text, scores
