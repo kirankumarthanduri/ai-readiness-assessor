@@ -1,6 +1,7 @@
 # Enterprise AI Readiness Assessor
 
 A Streamlit web app that evaluates an organization's readiness for AI transformation across 5 key dimensions and generates a professional executive report using Claude AI.
+https://avgs928mfw4qfc5w9pqjmp.streamlit.app/
 <img width="1193" height="805" alt="image" src="https://github.com/user-attachments/assets/c44d762a-4b25-43bf-b62d-e632014c0632" />
 
 ## Demo
